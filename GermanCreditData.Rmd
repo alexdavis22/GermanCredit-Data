@@ -4,6 +4,8 @@ author: "Alex Davis"
 date: "October 9, 2019"
 output:
   html_document:
+    df_print: paged
+  pdf_document:
     code_folding: show
 ---
 
@@ -145,7 +147,7 @@ testDF <- GermanCredit[-splitindexlogr,]
 
 
 
-```{r}
+```{r cache=TRUE}
 set.seed(23)
 ## Fitting a logistic regression model
 GLM.train1 <- glm(Class~., family = binomial(link = "logit"), data = trainDF)
@@ -171,14 +173,14 @@ confusionMatrix(testDF$Class, GLM.predict)
 ```
 **This logistic regression model does a decent job of predicting Class. Our specificity when fitting to the training data holds at about 59%, the overall accuracy is 72.55%, and the AUC isn't too far below that at 0.6707. A baseline accuracy of 70% can be assumed though because 70% of the applicants in the data set are classified as a good credit risk. We want our AUC on our test data to be at least above 0.70 if possible.**
 
-```{r}
+```{r cache=TRUE}
 set.seed(20)
 # Using vif function to test predictor variables in original model for multicollinearity
 vif(GLM.train1)
 ```
 **Housing and Property variables appear to suffer from multicollinearity... Loan.Purpose as well depending on if threshold is >3 or >4. Those variables have already been removed from the model above using step AIC method though. Let's build another model and reduce our predictor variables to the Step AIC selection used above.**
 
-```{r}
+```{r cache=TRUE}
 set.seed(24)
 GLM.train2 <- glm(formula = Class~InstallmentRatePercentage+Checking+Credit.History+OtherInstallmentPlans, family = binomial(link = "logit"), data = trainDF)
 summary(GLM.train2)
@@ -208,7 +210,7 @@ auc(testDF$Class, GLM.predict.2)
 ```
 **At these thresholds we have a lot of false positive predictions with very few false negative predictions, and a model that is thrown out of balance. We also now have a lower AUC of only 0.6144 on our test data. Let's adjust the thresholds and see if the model performs better. NOTE: this code outputs an AUC of 0.6326 after knitting this to an html despite setting my seed in the code chunk, and I have no idea why. Sorry!**
 
-```{r}
+```{r cache=TRUE}
 set.seed(25)
 
 GLM.predict.2 <- predict(GLM.train2, newdata = testDF, type = "response")
@@ -239,7 +241,7 @@ auc(testDF$Class, GLM.predict.2)
 
 **Here we use the rpart function from the rpart package to build and optimise a CART decision tree model to predict Class.**
 
-```{r}
+```{r cache=TRUE}
 ## Split data set into training and test
 set.seed(222)
 
@@ -336,7 +338,7 @@ print(ConfusionMatrix2)
 **Comparing the plot of the first decision tree and the second pruned model show that pruning our tree greatly simplifies the model and only focuses on predictor variables that are most significant. While we know this will reduce overfitting, we can also see that doing this has increased the accuracy of the decision tree model, but the balanced accuracy has actually dropped slightly, which has led to a pretty large gap when calculating the difference between the model's conventional accuracy and balanced accuracy. Perhaps oversampling the "Bad" credit risk class in our training data set to balance the data will help resolve this issue. We can see that currently our model shows bias to our majority credit risk class "Good" just as we saw with the logistic regression model built before.**
 
 
-```{r}
+```{r cache=TRUE}
 set.seed(448)
 ##Original imbalanced training data
 imbalanceRatio(trainGermanCredit.stratified, classAttr = "Class")
@@ -409,7 +411,7 @@ print(ConfusionMatrix5)
 ```
 **Accuracy has dropped from 0.745 in pruned.model2 to 0.68 in pruned.model3, but balanced accuracy is much higher at 0.6810, and is equal to the conventional accuracy measurement. We also have very close sensitivity and specificity values which is indicative of a good compromise between bias and variance in the data. Unfortunately it seems that this type of decision tree model may not be the best method for predicting Class, since an overall accuracy measurement of 68% would indicate this model would perform worse than if the bank just approved all loans, as 70% of the applicants have good credit anyway.**
 
-```{r}
+```{r cache=TRUE}
 ## Plotting our decision tree
 rpart.plot(pruned.model3, box.palette="RdGn", shadow.col="gray", nn=TRUE)
 
@@ -428,7 +430,7 @@ auc(GermanCreditClass01, testClass02)
 ```
 **Let's try a different data split just to make sure that won't improve accuracy.**
 
-```{r}
+```{r cache=TRUE}
 set.seed(43)
 splitIndex2 <- createDataPartition(y = GermanCredit$Class, p = .65, list = FALSE)
 
@@ -497,7 +499,7 @@ print(ConfusionMatrix8)
 ```
 **We can see that simplifying the decision tree by setting a maxdepth of nodes to 6, and then tweaking the minimum number of observations in the terminal node (minbucket) has improved overall accuracy to 0.74 and base accuracy to 0.7027.**
 
-```{r}
+```{r cache=TRUE}
 rpart.plot(pruned.model6, box.palette="RdGn", shadow.col="gray", nn=TRUE)
 
 ## Plot ROC curve
@@ -521,7 +523,7 @@ print(ConfusionMatrix8)
 **Regardless, I don't think this is the best type of model to try and predict Class. I'll try building a random forest model, which should allow for a higher accuracy without succumbing to overfitting as easily.**
 
 ### Random Forest Model
-```{r}
+```{r cache=TRUE}
 set.seed(223)
 randomforest.model <- randomForest(Class~., data = balanced.trainGermanCredit.stratified2, method = "class", mtry = 6)
 print(randomforest.model)
@@ -538,7 +540,7 @@ auc(as.numeric(predict.randomforest1)-1, as.numeric(testGermanCredit.stratified2
 ```
 **Overall accuracy is now roughly 74.29% and the AUC is 0.7106. Both are big improvements over the CART decision tree model. Let's try and optimize the model now.**
 
-```{r}
+```{r cache=TRUE}
 ## Searching for most optimal number of predictor variables sampled at each split in each tree. Need to remove Class from the training data otherwise the code will error out due to collinearity
 set.seed(238)
 bestmtry <- tuneRF(balanced.trainGermanCredit.stratified2[,-ClassColumn], balanced.trainGermanCredit.stratified2$Class, stepFactor = 0.5, improve = 0.00001, ntreeTry = 1000, doBest = TRUE, plot = TRUE)
@@ -563,7 +565,7 @@ auc(as.numeric(predict.randomforest2)-1, as.numeric(testGermanCredit.stratified2
 
 **Accuracy has decreased a little bit to 73.43%, as well as AUC which now sits at 0.7038. However, the default number of decision trees for the randomForest function is 500. I've increased that number to 5,000 here, which means these numbers are likely more representative of the model's capabilities, since the model is averaging a much greater number of decision trees with different root nodes and splits. The tuneRF function still performed as intended. Let's try sticking with those parameters and incorporating some restrictions on nodesize and number of terminal nodes next. Keeping the size of our decision trees smaller like our CART decision tree model may further improve accuracy.**
 
-```{r}
+```{r cache=TRUE}
 set.seed(29)
 randomforest.model3 <- randomForest(Class~., data = balanced.trainGermanCredit.stratified2, method = "class", mtry = 4, ntree = 5000, nodesize = 180, maxnodes = 6)
 print(randomforest.model3)
@@ -589,7 +591,7 @@ auc(as.numeric(predict.randomforest3)-1, as.numeric(testGermanCredit.stratified2
 
 ###XGBoost Model
 
-```{r}
+```{r cache=TRUE}
 set.seed(36)
 ## Setting tuning parameters to default to start
 params <- list(booster = "gbtree", objective = "binary:logistic", eta=0.3, gamma=0, max_depth=6, min_child_weight=1, subsample=1, colsample_bytree=1)
@@ -625,7 +627,7 @@ xgb.plot.importance(importance_matrix = xgboostvarimp[1:20])
 
 **Our first XGBoost model performs similarly to our optimised random forest models. Let's see if optimising this model has any significant impact on its accuracy.**
 
-```{r}
+```{r cache=TRUE}
 library(mlr)
 library(parallel)
 library(parallelMap) 
@@ -659,9 +661,9 @@ mytune <- tuneParams(learner = lrn, task = traintask, resampling = rdesc, measur
 
 print(mytune)
 ```
-**This code is still a work in progress since I'm not familiary with the mlr package yet, but we were able to optimize the XGBoost model to a mean test accuracy of 0.7982, which is a significant improvement over the random forest built built previously.**
+**This code is still a work in progress since I'm not familiar with the mlr package yet, but we were able to optimize the XGBoost model to a mean test accuracy of 0.7982, which is a significant improvement over the random forest built built previously.**
 
-```{r}
+```{r cache=TRUE}
 library(mlr)
 library(parallel)
 library(parallelMap) 
@@ -687,7 +689,7 @@ auc(as.numeric(xgboost.predict2$data$response)-1, as.numeric(xgboost.predict2$da
 
 **I think that, at least based on how I built and optimized these models, the random forest model is the clear choice as the model I would present to a business stakeholder. The optimized version of the random forest model has an almost perfect balance between specificity and sensitivity, and its sensitivity calculation far exceeds any of the other models at 0.7238, while still having a specificity rating of 0.7592. It also has the highest 95% confidence interval of any of the models with a range of 0.70 to 0.7932. This means that at worst the model is just as  accurate as the baseline option of the bank approving all loan applicants (which would be the correct assessment 70% of the time based on the data set), and typically will be more accurate than the baseline. The model also balances the data set to account for the higher cost to the bank that false positive predictions carry compared to a false negative.**
 
-**We can show that the most important factors that impact someone's credit worthiness are checking account balance, requested loan duration, credit history and request loan amount. The other variables in the data set have less impact on the model's fit. So, intuitively, someone who has credit history all paid and all at this bank, has a checking account with a balance greater than 200, and are requesting a loan with a short duration and a small amount would be considered a very safe investment for the bank, and vice versa if we select the opposite factors from those variables.**
+**We can show that the most important factors that impact someone's credit worthiness are checking account balance, requested loan duration, credit history and requested loan amount. The other variables in the data set have less impact on the model's fit. So, intuitively, someone who has credit history all paid and all at this bank, has a checking account with a balance greater than 200, and are requesting a loan with a short duration and a small amount would be considered a very safe investment for the bank, and vice versa if we select the opposite factors from those variables.**
 
 **The XGBoost has obvious merit as well, but I think it needs further optimizing before it can be presented confidently as the best model.**
 
