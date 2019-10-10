@@ -1,0 +1,693 @@
+---
+title: "Predicting Credit Risk Using GermanCredit Data"
+author: "Alex Davis"
+date: "October 9, 2019"
+output:
+  html_document:
+    code_folding: show
+---
+
+<style>
+
+.nav>li>a {
+
+    position: relative;
+
+    display: block;
+
+    padding: 10px 15px;
+
+    color: aliceblue;
+
+}
+
+.nav-pills>li.active>a, .nav-pills>li.active>a:hover, .nav-pills>li.active>a:focus {
+
+    color: #ffffff;
+
+    background-color: lightblue;
+
+}
+
+</style>
+
+
+```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(class.source="GermanCredit")
+## Call the packages we'll be using to build our models
+library(xgboost)
+library(caret)
+library(dplyr)
+library(randomForest)
+library(rpart)
+library(imbalance)
+library(DMwR)
+library(pROC)
+library(ROCR)
+library(rpart.plot)
+library(car)
+```
+
+```{css, echo=FALSE}
+pre {
+  max-height: 650px;
+  float: left;
+  width: 910px;
+  overflow-y: auto;
+}
+
+pre.r {
+  max-height: none;
+}
+
+
+body {
+  color: white;
+
+}
+
+.GermanCredit {
+background-color: aliceblue;
+
+}
+
+body {
+  background-color: salmon;
+
+}
+```
+
+## Table Of Contents {.tabset .tabset-pills}
+
+### Load And Prepare The Data Set
+
+**The models built in this document were fitted to the German Credit data set, which was created by UC Irvine and uploaded to their machine learning repository. The data set is 1,000 rows, and each row contains a unique applicant requesting a small loan from a German bank. All the models in this document are classification models that seek to accurately predict whether a loan applicant should be classified as a "Good" or a "Bad" credit risk based on the data provided.**
+
+**The data set can be downloaded here:**
+
+https://archive.ics.uci.edu/ml/datasets/Statlog+%28German+Credit+Data%29
+
+**Or here:**
+
+https://www.kaggle.com/uciml/german-credit
+
+```{r}
+## Setting our working directory and loading in the German Credit data set
+file_dir <- "C:/Users/alexa/Documents/INFS494" 
+GermanCredit <- read.csv(paste0(file_dir, "/GermanCredit_modified_SP19_001.csv"))
+
+
+## Transform the data set to store our categorical variables as factors
+GermanCredit$Telephone <- factor(GermanCredit$Telephone, labels = c('Yes', 'No'))
+GermanCredit$ForeignWorker <- factor(GermanCredit$ForeignWorker, labels = c('Yes', 'No'))
+GermanCredit$Checking <- factor(GermanCredit$Checking, labels = c('None', 'lt.0', '0.to.200', 'gt.200'))
+GermanCredit$Credit.History <- factor(GermanCredit$Credit.History, labels = c('Critical', 'Delay', 'PaidDuly', 'NoCredit.AllPaid', 'ThisBank.AllPaid'))
+GermanCredit$Loan.Purpose <- factor(GermanCredit$Loan.Purpose, labels = c('Business', 'DomesticAppliance', 'Education', 'Furniture', 'UsedCar', 'NewCar', 'Other', 'Radio.Television', 'Repairs', 'Retraining'))
+GermanCredit$Savings <- factor(GermanCredit$Savings, labels = c('Unknown', 'lt.100', '100.to.500', '500.to.1000', 'gt.1000'))
+GermanCredit$Employment.Duration <- factor(GermanCredit$Employment.Duration, labels = c('Unemployed', 'lt.1', '1.to.4', '4.to.7', 'gt.7'))
+GermanCredit$Personal.Status <- factor(GermanCredit$Personal.Status, labels = c('Single', 'NotSingle', 'Married.Widowed', 'Divorced.Seperated'))
+GermanCredit$Other.Debtors <- factor(GermanCredit$Other.Debtors, labels = c('None', 'Guarantor', 'CoApplicant'))
+GermanCredit$Property <- factor(GermanCredit$Property, labels = c('Unknown', 'RealEstate', 'CarOther', 'Insurance'))
+GermanCredit$OtherInstallmentPlans <- factor(GermanCredit$OtherInstallmentPlans, labels = c('None', 'Bank', 'Stores'))
+GermanCredit$Housing <- factor(GermanCredit$Housing, labels = c('ForFree', 'Own', 'Rent'))
+GermanCredit$Job.Type <- factor(GermanCredit$Job.Type, labels = c('Managment.SelfEmp.HighlyQualified', 'SkilledEmployee', 'UnskilledResident', 'UnemployedUnSkilled'))
+```
+
+### Logistic Regression Model
+
+```{r}
+## The following packages are used to build the models in this document
+# library(caret)
+# library(dplyr)
+# library(randomForest)
+# library(rpart)
+# library(imbalance)
+# library(DMwR)
+# library(pROC)
+# library(ROCR)
+# library(rpart.plot)
+# library(car)
+# library(xgboost)
+# library(mlr)
+# library(parallel)
+# library(parallelMap) 
+
+# Split data into train and test
+set.seed(737900)
+
+# set an index to split the data set  
+splitindexlogr <- sample(nrow(GermanCredit), size=632, replace= F)
+# Create the train data frame
+trainDF <- GermanCredit[splitindexlogr,]
+# Create the test data frame  
+testDF <- GermanCredit[-splitindexlogr,]
+```
+
+
+
+```{r}
+set.seed(23)
+## Fitting a logistic regression model
+GLM.train1 <- glm(Class~., family = binomial(link = "logit"), data = trainDF)
+summary(GLM.train1)
+
+## Using Step AIC to select predictor varaibles
+GLM.step <- step(GLM.train1, direction = "backward")
+summary(GLM.step)
+
+
+## InstallmentRatePercentage, Checking, Credit.History and OtherInstallmentPlans appear to be most significant variables after performing the above tests
+
+GLM.train <- train(Class~InstallmentRatePercentage+Checking+Credit.History+OtherInstallmentPlans,  data=trainDF, method="glm", family="binomial")
+
+GLM.train.cf <- predict(GLM.train, newdata=trainDF, type ="raw")
+
+GLM.predict <- predict(GLM.train, newdata=testDF, type ="raw")
+
+confusionMatrix(trainDF$Class, GLM.train.cf)
+confusionMatrix(testDF$Class, GLM.predict)
+
+
+```
+**This logistic regression model does a decent job of predicting Class. Our specificity when fitting to the training data holds at about 59%, the overall accuracy is 72.55%, and the AUC isn't too far below that at 0.6707. A baseline accuracy of 70% can be assumed though because 70% of the applicants in the data set are classified as a good credit risk. We want our AUC on our test data to be at least above 0.70 if possible.**
+
+```{r}
+set.seed(20)
+# Using vif function to test predictor variables in original model for multicollinearity
+vif(GLM.train1)
+```
+**Housing and Property variables appear to suffer from multicollinearity... Loan.Purpose as well depending on if threshold is >3 or >4. Those variables have already been removed from the model above using step AIC method though. Let's build another model and reduce our predictor variables to the Step AIC selection used above.**
+
+```{r}
+set.seed(24)
+GLM.train2 <- glm(formula = Class~InstallmentRatePercentage+Checking+Credit.History+OtherInstallmentPlans, family = binomial(link = "logit"), data = trainDF)
+summary(GLM.train2)
+
+# We may end up wanting to tweak these thresholds, since we know there is a higher cost of a false positive when you approve a loan for a bad credit risk compared to a false negative of denying a loan to a good credit risk. 
+GLM.predict.2 <- predict(GLM.train2, newdata = testDF, type = "response")
+GLM.predict.2[GLM.predict.2>=0.5] <- 1
+GLM.predict.2[GLM.predict.2<0.5] <- 0
+
+# Create factor vectors
+actual <- testDF$Class 
+predicted <- factor(GLM.predict.2, levels = c(0,1), labels = c("Bad", "Good"))
+
+# Print the confusion matrix
+table(actual, predicted)  
+
+round(prop.table(table(actual, predicted),1),2)
+
+# ROC plot and calculating AUC
+plot(roc(trainDF$Class, GLM.train2$fitted.values))
+
+auc(trainDF$Class, GLM.train2$fitted.values)
+
+plot(roc(testDF$Class, GLM.predict.2))
+
+auc(testDF$Class, GLM.predict.2)
+```
+**At these thresholds we have a lot of false positive predictions with very few false negative predictions, and a model that is thrown out of balance. We also now have a lower AUC of only 0.6144 on our test data. Let's adjust the thresholds and see if the model performs better. NOTE: this code outputs an AUC of 0.6326 after knitting this to an html despite setting my seed in the code chunk, and I have no idea why. Sorry!**
+
+```{r}
+set.seed(25)
+
+GLM.predict.2 <- predict(GLM.train2, newdata = testDF, type = "response")
+GLM.predict.2[GLM.predict.2>=0.70] <- 1
+GLM.predict.2[GLM.predict.2<0.70] <- 0
+
+# Create factor vectors
+actual <- testDF$Class 
+predicted <- factor(GLM.predict.2, levels = c(0,1), labels = c("Bad", "Good"))
+
+# Print the confusion matrix
+table(actual, predicted)  
+
+round(prop.table(table(actual, predicted),1),2)
+
+# ROC plot and calculating AUC
+plot(roc(trainDF$Class, GLM.train2$fitted.values))
+
+auc(trainDF$Class, GLM.train2$fitted.values)
+
+plot(roc(testDF$Class, GLM.predict.2))
+
+auc(testDF$Class, GLM.predict.2)
+```
+**After tweaking our thresholds we end up with an AUC of 0.6869. We still avoid classifying false positives the majority of the time while also correctly classifying a good credit risk the majority of the time. But, let's try building some other models and see if we can more accurately predict our response variable. NOTE: this code outputs an AUC of 0.6483 after knitting this to an html despite setting my seed in the code chunk, and I have no idea why. Sorry!**
+
+### CART Decision Tree Model
+
+**Here we use the rpart function from the rpart package to build and optimise a CART decision tree model to predict Class.**
+
+```{r}
+## Split data set into training and test
+set.seed(222)
+
+## Shuffle the data
+GermanCredit <-GermanCredit[sample(nrow(GermanCredit)),]
+
+splitIndex <- createDataPartition(y = GermanCredit$Class, p = .80, list = FALSE)
+
+trainGermanCredit.stratified <- GermanCredit[splitIndex,]
+testGermanCredit.stratified  <- GermanCredit[-splitIndex,]
+
+
+## Confirming data has 80/20 split
+nrow(trainGermanCredit.stratified)
+nrow(testGermanCredit.stratified)
+
+
+## Confirming data is stratified
+prop.table(table(trainGermanCredit.stratified$Class))
+prop.table(table(testGermanCredit.stratified$Class))
+
+## For rpart models we need to remove the response variable from the data set
+ClassColumn <- grep("Class",names(GermanCredit))
+
+## First we build a basic rpart model and select an optimal complexity parameter to prune our decision tree
+set.seed(333)
+
+rpart.model <- rpart(formula = Class~., data = trainGermanCredit.stratified, minsplit = 0, cp = 0, method = "class")
+
+rpart.plot(rpart.model, box.palette="RdGn", shadow.col="gray", nn=TRUE)
+
+## Using our first model to predict Class
+predicted0 <- rpart:::predict.rpart(object = rpart.model, newdata = testGermanCredit.stratified[,-ClassColumn], type = "class")
+predicted.accuracy <- mean(predicted0==testGermanCredit.stratified$Class)
+print(predicted.accuracy)
+
+
+## Creating our first confusion matrix
+ConfusionMatrix0 <- confusionMatrix(predicted0, testGermanCredit.stratified$Class)
+print(ConfusionMatrix0)
+
+
+## Choosing our optimal complexity parameter... we want to select the min xerror point on the plot
+plotcp(rpart.model)
+printcp(rpart.model)
+
+CPdataframe <- as.data.frame(printcp(rpart.model))
+print(CPdataframe)
+
+## nsplit = 32 and nsplit = 40 both have min xerror. We want to select min xerror and use smaller nsplit as tiebreaker
+min(CPdataframe$xerror)
+
+## CP values in rows 6 and 8-12 satisfy the condition below
+best.xerror <- (CPdataframe$xerror) < min(CPdataframe$xerror) + (CPdataframe$xstd)
+print(best.xerror)
+
+## We will select row 9, which has nsplit = 32 and CP = 0.0072917
+
+
+## Now we can build another rpart model using our pruning parameters
+tree <- rpart.control(minsplit = 0, cp = 0.0072917)
+
+pruned.model <- rpart(formula = Class~., data = trainGermanCredit.stratified, method = "class", control = tree)
+rpart.plot(pruned.model, box.palette="RdGn", shadow.col="gray", nn=TRUE)
+
+## Using our pruned rpart model to predict Class in the test data
+predicted <- predict(pruned.model,testGermanCredit.stratified[,-ClassColumn],type="class")
+pruned.accuracy1 <- mean(predicted==testGermanCredit.stratified$Class)
+print(pruned.accuracy1)
+
+
+## Creating a confusion matrix
+ConfusionMatrix <- confusionMatrix(predicted, testGermanCredit.stratified$Class)
+print(ConfusionMatrix)
+
+## Lets incorporate a cost matrix into the model, since cost of incorrectly classifying a bad credit risk as a good credit risk is worse than incorrectly classifying a good credit risk as a bad credit risk
+
+costMatrix <- matrix(c(0,2,1,0), nrow=2)
+print(costMatrix)
+
+
+## Now we can create an improved pruned model
+pruned.model2 <- rpart(formula = Class~., data = trainGermanCredit.stratified, method = "class", parms = list(loss=costMatrix,split="gini"), control = tree)
+rpart.plot(pruned.model2, box.palette="RdGn", shadow.col="gray", nn=TRUE)
+
+predicted2 <- predict(pruned.model2,testGermanCredit.stratified[,-ClassColumn],type="class")
+pruned.accuracy2 <- mean(predicted2==testGermanCredit.stratified$Class)
+print(pruned.accuracy2)
+
+## Create new confusion matrix
+ConfusionMatrix2 <- confusionMatrix(predicted2, testGermanCredit.stratified$Class)
+print(ConfusionMatrix2)
+```
+**Comparing the plot of the first decision tree and the second pruned model show that pruning our tree greatly simplifies the model and only focuses on predictor variables that are most significant. While we know this will reduce overfitting, we can also see that doing this has increased the accuracy of the decision tree model, but the balanced accuracy has actually dropped slightly, which has led to a pretty large gap when calculating the difference between the model's conventional accuracy and balanced accuracy. Perhaps oversampling the "Bad" credit risk class in our training data set to balance the data will help resolve this issue. We can see that currently our model shows bias to our majority credit risk class "Good" just as we saw with the logistic regression model built before.**
+
+
+```{r}
+set.seed(448)
+##Original imbalanced training data
+imbalanceRatio(trainGermanCredit.stratified, classAttr = "Class")
+table(trainGermanCredit.stratified$Class)
+
+## New balanced training data
+balanced.trainGermanCredit.stratified <- SMOTE(Class~., trainGermanCredit.stratified, perc.over = 66.66666667, perc.under = 250)
+imbalanceRatio(balanced.trainGermanCredit.stratified, classAttr = "Class")
+
+table(balanced.trainGermanCredit.stratified$Class)
+
+## Building our model again using balanced training data
+rpart.model2 <- rpart(formula = Class~., data = balanced.trainGermanCredit.stratified, minsplit = 0, cp = 0, method = "class")
+
+rpart.plot(rpart.model2, box.palette="RdGn", shadow.col="gray", nn=TRUE)
+
+## Using our new model to predict Class
+predicted3 <- rpart:::predict.rpart(object = rpart.model2, newdata = testGermanCredit.stratified[,-ClassColumn], type = "class")
+predicted.accuracy3 <- mean(predicted3==testGermanCredit.stratified$Class)
+print(predicted.accuracy3)
+
+
+## Creating our confusion matrix
+ConfusionMatrix3 <- confusionMatrix(predicted3, testGermanCredit.stratified$Class)
+print(ConfusionMatrix3)
+
+
+## Choosing our optimal complexity parameter
+plotcp(rpart.model2)
+printcp(rpart.model2)
+
+CPdataframe2 <- as.data.frame(printcp(rpart.model2))
+print(CPdataframe2)
+
+## row 13 satisfys our conditions, and has nsplit of 40 with cp = 0.0037500
+min(CPdataframe2$xerror)
+best.xerror <- (CPdataframe2$xerror) < min(CPdataframe2$xerror) + (CPdataframe2$xstd)
+print(best.xerror)
+
+## Now we can build another pruned model
+tree2 <- rpart.control(minsplit = 3, cp = 0.0037500)
+
+pruned.model3 <- rpart(formula = Class~., data = balanced.trainGermanCredit.stratified, method = "class", control = tree2)
+rpart.plot(pruned.model3, box.palette="RdGn", shadow.col="gray", nn=TRUE)
+
+## Using our pruned rpart model to predict Class in the test data again
+predicted4 <- predict(pruned.model3,testGermanCredit.stratified[,-ClassColumn],type="class")
+pruned.accuracy4 <- mean(predicted4==testGermanCredit.stratified$Class)
+print(pruned.accuracy4)
+
+## Creating another confusion matrix
+ConfusionMatrix4 <- confusionMatrix(predicted4, testGermanCredit.stratified$Class)
+print(ConfusionMatrix4)
+
+## Let's incorporate our costs again
+costMatrix2 <- matrix(c(0,4,1,0), nrow=2)
+print(costMatrix2)
+
+pruned.model4 <- rpart(formula = Class~., data = balanced.trainGermanCredit.stratified, method = "class", parms = list(loss=costMatrix2,split="gini"), control = tree2)
+rpart.plot(pruned.model4, box.palette="RdGn", shadow.col="gray", nn=TRUE)
+
+predicted5<- predict(pruned.model4,testGermanCredit.stratified[,-ClassColumn],type="class")
+pruned.accuracy5 <- mean(predicted5==testGermanCredit.stratified$Class)
+print(pruned.accuracy5)
+
+ConfusionMatrix5 <- confusionMatrix(predicted5, testGermanCredit.stratified$Class)
+print(ConfusionMatrix5)
+
+## Our model now performs worse because we've already oversampled the training data to correct for the data imbalance. We don't need to incorporate a cost matrix also. We will disregard this version of the model.
+```
+**Accuracy has dropped from 0.745 in pruned.model2 to 0.68 in pruned.model3, but balanced accuracy is much higher at 0.6810, and is equal to the conventional accuracy measurement. We also have very close sensitivity and specificity values which is indicative of a good compromise between bias and variance in the data. Unfortunately it seems that this type of decision tree model may not be the best method for predicting Class, since an overall accuracy measurement of 68% would indicate this model would perform worse than if the bank just approved all loans, as 70% of the applicants have good credit anyway.**
+
+```{r}
+## Plotting our decision tree
+rpart.plot(pruned.model3, box.palette="RdGn", shadow.col="gray", nn=TRUE)
+
+## Plot ROC curve
+GermanCreditClass01 = rep(0, length(testGermanCredit.stratified$Class))
+GermanCreditClass01[testGermanCredit.stratified$Class %in% "Good"] = 1
+GermanCreditClass01[testGermanCredit.stratified$Class %in% "Bad"] = 0
+print(GermanCreditClass01)
+
+testClass02 = rep(0, length(predicted4))
+testClass02[predicted4 %in% "Good"] = 1
+print(testClass02)
+
+plot(roc(GermanCreditClass01, testClass02))
+auc(GermanCreditClass01, testClass02)
+```
+**Let's try a different data split just to make sure that won't improve accuracy.**
+
+```{r}
+set.seed(43)
+splitIndex2 <- createDataPartition(y = GermanCredit$Class, p = .65, list = FALSE)
+
+trainGermanCredit.stratified2 <- GermanCredit[splitIndex2,]
+testGermanCredit.stratified2  <- GermanCredit[-splitIndex2,]
+
+
+imbalanceRatio(trainGermanCredit.stratified2, classAttr = "Class")
+table(trainGermanCredit.stratified2$Class)
+
+balanced.trainGermanCredit.stratified2 <- SMOTE(Class~., trainGermanCredit.stratified2, perc.over = 66.66666667, perc.under = 250)
+imbalanceRatio(balanced.trainGermanCredit.stratified2, classAttr = "Class")
+
+table(balanced.trainGermanCredit.stratified2$Class)
+
+
+rpart.model3 <- rpart(formula = Class~., data = balanced.trainGermanCredit.stratified2, minsplit = 0, cp = 0, method = "class")
+
+
+predicted6 <- rpart:::predict.rpart(object = rpart.model3, newdata = testGermanCredit.stratified2[,-ClassColumn], type = "class")
+predicted.accuracy6 <- mean(predicted6==testGermanCredit.stratified2$Class)
+print(predicted.accuracy6)
+
+
+ConfusionMatrix6 <- confusionMatrix(predicted6, testGermanCredit.stratified2$Class)
+print(ConfusionMatrix6)
+
+## Choosing our optimal complexity parameter
+plotcp(rpart.model3)
+printcp(rpart.model3)
+
+CPdataframe3 <- as.data.frame(printcp(rpart.model3))
+print(CPdataframe3)
+
+## row 10 satisfy our conditions
+best.xerror <- (CPdataframe3$xerror) < min(CPdataframe3$xerror) + (CPdataframe3$xstd)
+print(best.xerror)
+
+## Now we can build another pruned model
+tree3 <- rpart.control(cp = 0.004615385)
+
+pruned.model5 <- rpart(formula = Class~., data = balanced.trainGermanCredit.stratified2, method = "class", control = tree3)
+
+## Using our pruned rpart model to predict Class in the test data again
+predicted7 <- predict(pruned.model5,testGermanCredit.stratified2[,-ClassColumn],type="class")
+pruned.accuracy7 <- mean(predicted7==testGermanCredit.stratified2$Class)
+print(pruned.accuracy7)
+
+## Creating another confusion matrix
+ConfusionMatrix7 <- confusionMatrix(predicted7, testGermanCredit.stratified2$Class)
+print(ConfusionMatrix7)
+
+## Let's try tweaking our minsplit, maxdepth and minbucket pruning parameters to further optimize the model
+
+tree4 <- rpart.control(minsplit = 20, cp = 0.004615385, maxdepth = 6, minbucket = 8)
+
+pruned.model6 <- rpart(formula = Class~., data = balanced.trainGermanCredit.stratified2, control = tree4)
+
+
+predicted8<- predict(pruned.model6,testGermanCredit.stratified2[,-ClassColumn],type="class")
+pruned.accuracy8 <- mean(predicted8==testGermanCredit.stratified2$Class)
+print(pruned.accuracy8)
+
+ConfusionMatrix8 <- confusionMatrix(predicted8, testGermanCredit.stratified2$Class)
+print(ConfusionMatrix8)
+```
+**We can see that simplifying the decision tree by setting a maxdepth of nodes to 6, and then tweaking the minimum number of observations in the terminal node (minbucket) has improved overall accuracy to 0.74 and base accuracy to 0.7027.**
+
+```{r}
+rpart.plot(pruned.model6, box.palette="RdGn", shadow.col="gray", nn=TRUE)
+
+## Plot ROC curve
+GermanCreditClass012 = rep(0, length(testGermanCredit.stratified2$Class))
+GermanCreditClass012[testGermanCredit.stratified2$Class %in% "Good"] = 1
+GermanCreditClass012[testGermanCredit.stratified2$Class %in% "Bad"] = 0
+print(GermanCreditClass012)
+
+testClass022 = rep(0, length(predicted8))
+testClass022[predicted8 %in% "Good"] = 1
+print(testClass022)
+
+plot(roc(GermanCreditClass012, testClass022))
+auc(GermanCreditClass012, testClass022)
+
+print(ConfusionMatrix2)
+print(ConfusionMatrix8)
+```
+**Our most conventionally accurate decision tree model had an overall accuracy of 74.5% and an error rate of 0.255, but the AUC was low and we didn't have a good balance between bias and variance. Our most optimized model has a similar accuracy of 74.0% and an error rate of 0.26, but the AUC was ok at 0.7027, which is a great improvement over the original model's AUC of 0.6179. It is also worth pointing out that if this were a real business case, then the original pruned decision tree model would be a much worse choise than the balanced "optimized" model due to the terrible sensitivity calculation of 0.30.**
+
+**Regardless, I don't think this is the best type of model to try and predict Class. I'll try building a random forest model, which should allow for a higher accuracy without succumbing to overfitting as easily.**
+
+### Random Forest Model
+```{r}
+set.seed(223)
+randomforest.model <- randomForest(Class~., data = balanced.trainGermanCredit.stratified2, method = "class", mtry = 6)
+print(randomforest.model)
+summary(randomforest.model)
+
+predict.randomforest1 <- predict(randomforest.model,testGermanCredit.stratified2[,-ClassColumn],type="class")
+randomforestaccuracy1 <- mean(predict.randomforest1==testGermanCredit.stratified2$Class)
+print(randomforestaccuracy1)
+
+ConfusionMatrixrf1 <- confusionMatrix(predict.randomforest1, testGermanCredit.stratified2$Class)
+print(ConfusionMatrixrf1)
+
+auc(as.numeric(predict.randomforest1)-1, as.numeric(testGermanCredit.stratified2$Class)-1)
+```
+**Overall accuracy is now roughly 74.29% and the AUC is 0.7106. Both are big improvements over the CART decision tree model. Let's try and optimize the model now.**
+
+```{r}
+## Searching for most optimal number of predictor variables sampled at each split in each tree. Need to remove Class from the training data otherwise the code will error out due to collinearity
+set.seed(238)
+bestmtry <- tuneRF(balanced.trainGermanCredit.stratified2[,-ClassColumn], balanced.trainGermanCredit.stratified2$Class, stepFactor = 0.5, improve = 0.00001, ntreeTry = 1000, doBest = TRUE, plot = TRUE)
+print(bestmtry)
+
+## mtry = 4 is the mtry that has resulted in the lowest OOB error of 14.77%. Let's incorporate that number back into the model
+
+set.seed(16)
+randomforest.model2 <- randomForest(Class~., data = balanced.trainGermanCredit.stratified2, method = "class", mtry = 4, ntree = 5000)
+print(randomforest.model2)
+summary(randomforest.model2)
+
+predict.randomforest2 <- predict(randomforest.model2,testGermanCredit.stratified2[,-ClassColumn],type="class")
+randomforestaccuracy2 <- mean(predict.randomforest2==testGermanCredit.stratified2$Class)
+print(randomforestaccuracy2)
+
+ConfusionMatrixrf2 <- confusionMatrix(predict.randomforest2, testGermanCredit.stratified2$Class)
+print(ConfusionMatrixrf2)
+
+auc(as.numeric(predict.randomforest2)-1, as.numeric(testGermanCredit.stratified2$Class)-1)
+```
+
+**Accuracy has decreased a little bit to 73.43%, as well as AUC which now sits at 0.7038. However, the default number of decision trees for the randomForest function is 500. I've increased that number to 5,000 here, which means these numbers are likely more representative of the model's capabilities, since the model is averaging a much greater number of decision trees with different root nodes and splits. The tuneRF function still performed as intended. Let's try sticking with those parameters and incorporating some restrictions on nodesize and number of terminal nodes next. Keeping the size of our decision trees smaller like our CART decision tree model may further improve accuracy.**
+
+```{r}
+set.seed(29)
+randomforest.model3 <- randomForest(Class~., data = balanced.trainGermanCredit.stratified2, method = "class", mtry = 4, ntree = 5000, nodesize = 180, maxnodes = 6)
+print(randomforest.model3)
+summary(randomforest.model3)
+
+predict.randomforest3 <- predict(randomforest.model3,testGermanCredit.stratified2[,-ClassColumn],type="class")
+randomforestaccuracy3 <- mean(predict.randomforest3==testGermanCredit.stratified2$Class)
+print(randomforestaccuracy3)
+
+ConfusionMatrixrf3 <- confusionMatrix(predict.randomforest3, testGermanCredit.stratified2$Class)
+print(ConfusionMatrixrf3)
+
+importance(randomforest.model3)
+varImp(randomforest.model3)
+varImpPlot(randomforest.model3)
+
+importance(randomforest.model3, class="Good")
+
+auc(as.numeric(predict.randomforest3)-1, as.numeric(testGermanCredit.stratified2$Class)-1)
+```
+
+**We're able to increase our accuracy slightly to 0.7486, and our AUC has also increased to 0.714. This is a notably better result than the optimized decision tree model, and this model also has a great balance between bias and variance.**
+
+###XGBoost Model
+
+```{r}
+set.seed(36)
+## Setting tuning parameters to default to start
+params <- list(booster = "gbtree", objective = "binary:logistic", eta=0.3, gamma=0, max_depth=6, min_child_weight=1, subsample=1, colsample_bytree=1)
+
+## Setting factors to numeric so that the model can interpret the train and test data
+trainlabels <- as.numeric(balanced.trainGermanCredit.stratified2$Class)-1
+testlabels <- as.numeric(testGermanCredit.stratified2$Class)-1
+
+train <- model.matrix(~.+0,data = balanced.trainGermanCredit.stratified2[,-ClassColumn]) 
+test <- model.matrix(~.+0,data = testGermanCredit.stratified2[,-ClassColumn])
+
+train <- xgb.DMatrix(data = train,label = trainlabels)
+test <- xgb.DMatrix(data = test,label=testlabels)
+
+# Building first xgboost model with an arbitrary 100 iterations
+xgboost1 <- xgb.train(params = params, data = train, nrounds = 100, watchlist = list(test=test,train=train), print.every.n = 10, early.stop.round = 10, maximize = F , eval_metric = "error")
+
+# Best iteration was determined to be 29. Has a test error of 0.257143 and a training error of 0
+print(xgboost1)
+
+# The model outputs in probability rather than classifcation, so I need to set a cutoff threshold
+xgboost.predict1 <- predict(xgboost1,test)
+print(xgboost.predict1)
+xgboost.predict1 <- ifelse (xgboost.predict1 > 0.5,1,0)
+
+# Building a confusion matrix... this matches up with the test error above
+confusionMatrix(factor(xgboost.predict1),factor(testlabels))
+
+# Plotting variable importance
+xgboostvarimp <- xgb.importance(feature_names = colnames(train),model = xgboost1)
+xgb.plot.importance(importance_matrix = xgboostvarimp[1:20]) 
+```
+
+**Our first XGBoost model performs similarly to our optimised random forest models. Let's see if optimising this model has any significant impact on its accuracy.**
+
+```{r}
+library(mlr)
+library(parallel)
+library(parallelMap) 
+set.seed(45)
+# We'll use the mlr package to determine the best tuning parameters for us
+fact_col <- colnames(balanced.trainGermanCredit.stratified2)[sapply(balanced.trainGermanCredit.stratified2,is.character)]
+
+ for(i in fact_col) set(balanced.trainGermanCredit.stratified2,j=i,value = factor(balanced.trainGermanCredit.stratified2[[i]]))
+
+for (i in fact_col) set(testGermanCredit.stratified2,j=i,value = factor(testGermanCredit.stratified2[[i]]))
+
+traintask <- makeClassifTask (data = balanced.trainGermanCredit.stratified2,target = "Class")
+testtask <- makeClassifTask (data = testGermanCredit.stratified2,target = "Class")
+
+traintask <- createDummyFeatures (obj = traintask) 
+testtask <- createDummyFeatures (obj = testtask)
+
+lrn <- makeLearner("classif.xgboost",predict.type = "response")
+lrn$par.vals <- list( objective="binary:logistic", eval_metric="error", nrounds=100L, eta=0.1)
+
+params <- makeParamSet( makeDiscreteParam("booster",values = "gbtree"), makeIntegerParam("max_depth",lower = 3L,upper = 10L), makeNumericParam("min_child_weight",lower = 1L,upper = 10L), makeNumericParam("subsample",lower = 0.1,upper = 1), makeNumericParam("colsample_bytree",lower = 0.1,upper = 1))
+
+rdesc <- makeResampleDesc("Holdout",stratify = T,iters=5L)
+
+ctrl <- makeTuneControlRandom(maxit = 10L)
+
+# Allow parallel computing that uses all cores
+parallelStartSocket(cpus = detectCores())
+
+mytune <- tuneParams(learner = lrn, task = traintask, resampling = rdesc, measures = acc, par.set = params, control = ctrl, show.info = T)
+
+print(mytune)
+```
+**This code is still a work in progress since I'm not familiary with the mlr package yet, but we were able to optimize the XGBoost model to a mean test accuracy of 0.7982, which is a significant improvement over the random forest built built previously.**
+
+```{r}
+library(mlr)
+library(parallel)
+library(parallelMap) 
+set.seed(55)
+# Further optimization by setting hyperparameters
+hyper.tune <- setHyperPars(lrn,par.vals = mytune$x)
+
+xgboost2 <- train(learner = hyper.tune,task = traintask)
+
+xgboost.predict2 <- predict(xgboost2,testtask)
+
+confusionMatrix(factor(xgboost.predict2$data$response),factor(xgboost.predict2$data$truth))
+
+
+auc(as.numeric(xgboost.predict2$data$response)-1, as.numeric(xgboost.predict2$data$truth)-1)
+
+```
+**This confusion matrix doesn't exactly line up with the mean test accuracy calculation provided previously, but these are the highest accuracy and balanced accuracy measurements out of any model so far. The 95% confidence intervals places this model in the range of 72.38% - 81.44% accuracte, which is above the baseline performance of this dataset. The overall accuracy is calculated to be 77.14%. Our AUC is calculated at 0.7325, which is also the highest AUC calculated of any model. The model does still have a fairly high number of false positives though. It may be worth tweakin the model further to try and reduce that number.**
+
+**NOTE: These accuracy measurements are also not matching up with my knitted html document despite set seed in all code chunks... not sure how to fix this issue**
+
+###Final Model Choice
+
+**I think that, at least based on how I built and optimized these models, the random forest model is the clear choice as the model I would present to a business stakeholder. The optimized version of the random forest model has an almost perfect balance between specificity and sensitivity, and its sensitivity calculation far exceeds any of the other models at 0.7238, while still having a specificity rating of 0.7592. It also has the highest 95% confidence interval of any of the models with a range of 0.70 to 0.7932. This means that at worst the model is just as  accurate as the baseline option of the bank approving all loan applicants (which would be the correct assessment 70% of the time based on the data set), and typically will be more accurate than the baseline. The model also balances the data set to account for the higher cost to the bank that false positive predictions carry compared to a false negative.**
+
+**We can show that the most important factors that impact someone's credit worthiness are checking account balance, requested loan duration, credit history and request loan amount. The other variables in the data set have less impact on the model's fit. So, intuitively, someone who has credit history all paid and all at this bank, has a checking account with a balance greater than 200, and are requesting a loan with a short duration and a small amount would be considered a very safe investment for the bank, and vice versa if we select the opposite factors from those variables.**
+
+**The XGBoost has obvious merit as well, but I think it needs further optimizing before it can be presented confidently as the best model.**
+
