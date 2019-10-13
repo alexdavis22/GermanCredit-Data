@@ -624,8 +624,54 @@ auc(as.numeric(xgboost.predict2$data$response)-1, as.numeric(xgboost.predict2$da
 ```
 **This confusion matrix doesn't exactly line up with the mean test accuracy calculation provided previously, but these are the highest accuracy and balanced accuracy measurements out of any model so far. The 95% confidence intervals places this model in the range of 72.38% - 81.44% accurate, which is above the baseline performance of this dataset. The overall accuracy is calculated to be 77.14%. Our AUC is calculated at 0.7325, which is also the highest AUC calculated of any model. The model does still have a fairly high number of false positives though. It may be worth tweaking the model further to try and reduce that number.** 
 
+### H2O GBM
+
+```{r}
+set.seed(64)
+library(h2o)
+h2o.init(ip = "localhost", port = 54321, startH2O = TRUE)
+
+GermanCreditPath <- "file:///C:/Users/alexa/Documents/Portfolio/GermanCredit_modified_SP19_001-1-1-1-1.csv"
+GermanCredit.hex <- h2o.importFile(path = GermanCreditPath, destination_frame = "GermanCredit.hex")
+
+r <- h2o.runif(GermanCredit.hex)
+GermanCredit_train.hex <- GermanCredit.hex[r < 0.6,]
+GermanCredit_valid.hex <- GermanCredit.hex[(r >= 0.6) & (r < 0.9),]
+GermanCredit_test.hex <- GermanCredit.hex[r >= 0.9,]
+
+# Not sure why the model errors unless I concatenate columns written out like this to specify predictor variables....
+myX = c("Duration", "Amount", "InstallmentRatePercentage", "ResidenceDuration", "Age", "NumberExistingCredits", "NumberPeopleMaintenance", "Telephone", "ForeignWorker", "Checking", "Credit.History", "Loan.Purpose", "Savings", "Employment.Duration", "Personal.Status", "Other.Debtors", "Property", "OtherInstallmentPlans", "Housing", "Job.Type")
+
+GermanCredit.h2o.model <- h2o.gbm(y = "Class", x = myX,
+distribution="bernoulli",
+training_frame = GermanCredit_train.hex,
+validation_frame = GermanCredit_valid.hex,
+ntrees=5000, max_depth=6, learn_rate=0.1, sample_rate=0.6, col_sample_rate=0.7)
+
+
+print(GermanCredit.h2o.model)
+
+# Perform classification on the holdout data
+h2o.prediction <- h2o.predict(GermanCredit.h2o.model, newdata=GermanCredit_test.hex)
+
+h2o.varimp(GermanCredit.h2o.model)
+
+h2o.confusionMatrix(GermanCredit.h2o.model, GermanCredit_train.hex)
+h2o.confusionMatrix(GermanCredit.h2o.model, GermanCredit_valid.hex)
+h2o.confusionMatrix(GermanCredit.h2o.model, GermanCredit_test.hex)
+
+performance = h2o.performance(GermanCredit.h2o.model, GermanCredit_test.hex)
+print(performance)
+h2o.confusionMatrix(performance)
+
+```
+**NOTE: I'm not sure how to make the h2o code reproducible. Despite setting a seed my code returns a slightly different output every time. I'm seeing AUC ranges of anywhere from 0.80-0.83 in the knitted html document. Conventional accuracy is ranging from about 0.80-0.84. I'm also seeing that every time the model runs it is minimizing false positives while still correctly predicting Good credit risks the majority of the time, which is exactly what a business stakeholder would want in this scenario.**
+
+
 ###Final Model Choice
 
 **I think that, at least based on how I built and optimized these models, the random forest model and XGBoost models are both good enough to present to a business stakeholder. The optimized version of the random forest model has an almost perfect balance between specificity and sensitivity, and its sensitivity calculation far exceeds any of the other models at 0.7238, while still having a specificity rating of 0.7592. It also has the highest 95% confidence interval of any of the models with a range of 0.70 to 0.7932. This means that at worst the model is just as  accurate as the baseline option of the bank approving all loan applicants (which would be the correct assessment 70% of the time based on the data set), and typically will be more accurate than the baseline. The model also balances the data set to account for the higher cost to the bank that false positive predictions carry compared to a false negative. The XGBoost model has obvious merit as well. It is more accurate than the random forest model. However, it may be too difficult to explain to the stakeholders and they may not feel condident enough in my explanation to want to utilize it. The random forest model, on the other hand, I think I can explain at a high level in a way that the stakeholders could understand and feel comfortable about utilizing. It is worth noting though that both of these models would perform better on a much larger set of training data.**
+
+**The H2o gbm is by far our best performing model, and also does by far the best job of any model of minimizing false positives. However, I need to dig deeper into this code and better understand the optimization parameters before I would try and present something like this in a meeting.**
 
 
