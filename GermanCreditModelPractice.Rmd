@@ -626,8 +626,7 @@ auc(as.numeric(xgboost.predict2$data$response)-1, as.numeric(xgboost.predict2$da
 
 ### H2O GBM
 
-```{r}
-set.seed(64)
+```{r cache=TRUE}
 library(h2o)
 h2o.init(ip = "localhost", port = 54321, startH2O = TRUE)
 
@@ -646,7 +645,7 @@ GermanCredit.h2o.model <- h2o.gbm(y = "Class", x = myX,
 distribution="bernoulli",
 training_frame = GermanCredit_train.hex,
 validation_frame = GermanCredit_valid.hex,
-ntrees=5000, max_depth=6, learn_rate=0.1, sample_rate=0.6, col_sample_rate=0.7)
+ntrees=5000, max_depth=6, learn_rate=0.1, sample_rate=0.6, col_sample_rate=0.7, seed = 21)
 
 
 print(GermanCredit.h2o.model)
@@ -669,7 +668,37 @@ plot(GermanCredit.h2o.model, timestep = "number_of_trees", metric = "auc")
 plot(performance, type = "roc")  
 ```
 
-**NOTE: I'm not sure how to make the h2o code reproducible. Despite setting a seed my code returns a slightly different output every time. I'm seeing AUC ranges of anywhere from 0.80-0.84 in the knitted html document. Conventional accuracy is ranging from about 0.80-0.85. I'm also seeing that every time the model runs it is minimizing false positives while still correctly predicting Good credit risks the majority of the time, which is exactly what a business stakeholder would want in this scenario.** 
+```{r cache=TRUE}
+# Optimizing model by doubling learning rate and max depth of trees this will result in a closer fit
+GermanCredit.h2o.model2 <- h2o.gbm(y = "Class", x = myX,
+distribution="bernoulli",
+training_frame = GermanCredit_train.hex,
+validation_frame = GermanCredit_valid.hex,
+ntrees=5000, max_depth=12, learn_rate=0.2, sample_rate=0.6, col_sample_rate=0.7, seed = 21)
+
+
+print(GermanCredit.h2o.model2)
+
+# Perform classification on the holdout data
+h2o.prediction2 <- h2o.predict(GermanCredit.h2o.model2, newdata=GermanCredit_test.hex)
+
+h2o.varimp(GermanCredit.h2o.model2)
+
+h2o.confusionMatrix(GermanCredit.h2o.model2, GermanCredit_train.hex)
+h2o.confusionMatrix(GermanCredit.h2o.model2, GermanCredit_valid.hex)
+h2o.confusionMatrix(GermanCredit.h2o.model2, GermanCredit_test.hex)
+
+performance2 = h2o.performance(GermanCredit.h2o.model2, GermanCredit_test.hex)
+print(performance2)
+h2o.confusionMatrix(performance2)
+
+plot(GermanCredit.h2o.model2, timestep = "number_of_trees", metric = "auc")
+
+plot(performance2, type = "roc")  
+
+```
+
+**Depending on the seed set I'm seeing AUC calculations ranging from 0.80-0.84. Conventional accuracy is ranging from about 0.80-0.85. I'm also seeing that every time the model runs it is minimizing false positives while still correctly predicting Good credit risks the majority of the time, which is exactly what a business stakeholder would want in this scenario. I do see an average increase in accuracy and AUC when comparing the optimized model to the original model.** 
 
 
 ###Final Model Choice
