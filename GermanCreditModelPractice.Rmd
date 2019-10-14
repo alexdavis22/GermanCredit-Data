@@ -664,8 +664,12 @@ performance = h2o.performance(GermanCredit.h2o.model, GermanCredit_test.hex)
 print(performance)
 h2o.confusionMatrix(performance)
 
+plot(GermanCredit.h2o.model, timestep = "number_of_trees", metric = "auc")
+
+plot(performance, type = "roc")  
 ```
-**NOTE: I'm not sure how to make the h2o code reproducible. Despite setting a seed my code returns a slightly different output every time. I'm seeing AUC ranges of anywhere from 0.80-0.83 in the knitted html document. Conventional accuracy is ranging from about 0.80-0.84. I'm also seeing that every time the model runs it is minimizing false positives while still correctly predicting Good credit risks the majority of the time, which is exactly what a business stakeholder would want in this scenario.**
+
+**NOTE: I'm not sure how to make the h2o code reproducible. Despite setting a seed my code returns a slightly different output every time. I'm seeing AUC ranges of anywhere from 0.80-0.84 in the knitted html document. Conventional accuracy is ranging from about 0.80-0.85. I'm also seeing that every time the model runs it is minimizing false positives while still correctly predicting Good credit risks the majority of the time, which is exactly what a business stakeholder would want in this scenario.** 
 
 
 ###Final Model Choice
